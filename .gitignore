@@ -1,0 +1,28 @@
+# Xcode & SwiftPM
+.build/
+.swiftpm/
+build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.dSYM
+*.app/
+*.app
+
+# macOS System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Environment & Credentials
+.env
+*.local
+
+# Project Caches & Dumps
+ym_network_cache/
+project_dump*.txt
+*.swp
+*~
