@@ -1,261 +1,283 @@
 import SwiftUI
 
-/// High-performance native macOS Table for track lists.
-/// Far more memory-efficient than LazyVStack for lists with thousands of items.
+/// Modern native macOS track list with smooth lazy rendering, column headers,
+/// interactive hover cards, and seamless context menus.
 public struct TrackTableView: View {
-    let tracks: [YMTrack]
-    let onPlayTrack: (YMTrack) -> Void
-    var onTrackAppear: ((YMTrack) -> Void)? = nil
-    var onLoadMore: (() -> Void)? = nil
+    public let tracks: [YMTrack]
+    public let onPlayTrack: (YMTrack) -> Void
+    public var onTrackAppear: ((YMTrack) -> Void)? = nil
+    public var onLoadMore: (() -> Void)? = nil
+    public var showHeader: Bool = true
+    public var showAlbum: Bool = true
 
-    @UIState private var selectedTrackId: YMTrack.ID?
-    @UIState private var likesService = LikesService.shared
     @UIState private var audioEngine = AudioPlayerEngine.shared
+    @UIState private var likesService = LikesService.shared
     @UIState private var coordinator = NavigationCoordinator.shared
 
     public init(
         tracks: [YMTrack],
         onPlayTrack: @escaping (YMTrack) -> Void,
         onTrackAppear: ((YMTrack) -> Void)? = nil,
-        onLoadMore: (() -> Void)? = nil
+        onLoadMore: (() -> Void)? = nil,
+        showHeader: Bool = true,
+        showAlbum: Bool = true
     ) {
         self.tracks = tracks
         self.onPlayTrack = onPlayTrack
         self.onTrackAppear = onTrackAppear
         self.onLoadMore = onLoadMore
-    }
-
-    private var tableTracks: [YMTrack] {
-        tracks
+        self.showHeader = showHeader
+        self.showAlbum = showAlbum
     }
 
     public var body: some View {
-        Table(tableTracks, selection: $selectedTrackId) {
-            // Column 1: Play state & Like button
-            TableColumn("") { track in
-                Group {
-                    if track.isSpacer {
-                        Color.clear.frame(width: 44, height: 32)
-                    } else if track.isPlaceholder {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(Color.secondary.opacity(0.12))
-                                .frame(width: 12, height: 12)
-                            Circle()
-                                .fill(Color.secondary.opacity(0.12))
-                                .frame(width: 12, height: 12)
-                        }
-                        .frame(width: 44, alignment: .leading)
-                    } else {
-                        HStack(spacing: 8) {
-                            if audioEngine.currentTrack?.id == track.id && audioEngine.isPlaying {
-                                Image(systemName: "waveform")
-                                    .foregroundStyle(YMTheme.accent)
-                                    .font(.system(size: 11, weight: .bold))
-                            } else {
-                                Button {
-                                    onPlayTrack(track)
-                                } label: {
-                                    Image(systemName: "play.fill")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(YMTheme.fg60)
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            Button {
-                                Task {
-                                    await likesService.toggleLike(track: track)
-                                }
-                            } label: {
-                                Image(systemName: likesService.isLiked(trackId: track.id) ? "heart.fill" : "heart")
-                                    .foregroundColor(likesService.isLiked(trackId: track.id) ? YMTheme.heartRed : YMTheme.fg40)
-                                    .font(.system(size: 11))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(width: 44, alignment: .leading)
-                    }
-                }
-                .onAppear {
-                    guard !track.isSpacer else { return }
-                    onTrackAppear?(track)
-                    if !track.isPlaceholder, tracks.suffix(5).contains(where: { $0.id == track.id }) {
-                        onLoadMore?()
-                    }
-                }
+        VStack(spacing: 0) {
+            if showHeader && !tracks.isEmpty {
+                headerView
+                Divider()
+                    .overlay(YMTheme.border)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 4)
             }
-            .width(44)
 
-            // Column 2: Album Cover thumbnail
-            TableColumn("Обложка") { track in
-                if track.isSpacer {
-                    Color.clear.frame(width: 32, height: 32)
-                } else if track.isPlaceholder {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.secondary.opacity(0.12))
-                        .frame(width: 32, height: 32)
-                } else {
-                    CachedCoverImage(
-                        coverUri: track.effectiveCoverUri,
-                        size: .small,
-                        displaySize: 32,
-                        cornerRadius: 4
+            LazyVStack(spacing: 2) {
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    ModernTrackRow(
+                        track: track,
+                        index: index,
+                        isPlaying: audioEngine.currentTrack?.id == track.id && audioEngine.isPlaying,
+                        showAlbum: showAlbum,
+                        onPlay: {
+                            onPlayTrack(track)
+                        },
+                        onArtistSelect: { artist in
+                            coordinator.navigate(to: .artist(id: artist.id, name: artist.name))
+                        },
+                        onAlbumSelect: { album in
+                            coordinator.navigate(to: .album(id: album.id, title: album.title))
+                        }
                     )
+                    .onAppear {
+                        onTrackAppear?(track)
+                        if index >= tracks.count - 6 {
+                            onLoadMore?()
+                        }
+                    }
                 }
             }
-            .width(36)
+        }
+    }
 
-            // Column 3: Track Title & Version
-            TableColumn("Название") { track in
-                if track.isSpacer {
-                    Color.clear.frame(maxWidth: .infinity, maxHeight: 32)
-                } else if track.isPlaceholder {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.12))
-                        .frame(width: 140, height: 12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+    @ViewBuilder
+    private var headerView: some View {
+        HStack(spacing: 12) {
+            Text("#")
+                .frame(width: 36, alignment: .center)
+
+            Text("ТРЕК")
+                .frame(minWidth: 200, alignment: .leading)
+
+            Spacer()
+
+            if showAlbum {
+                Text("АЛЬБОМ")
+                    .frame(width: 180, alignment: .leading)
+            }
+
+            Text("♡")
+                .frame(width: 32, alignment: .center)
+
+            Text("ВРЕМЯ")
+                .frame(width: 50, alignment: .trailing)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(YMTheme.fg40)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Modern Track Row
+
+private struct ModernTrackRow: View {
+    let track: YMTrack
+    let index: Int
+    let isPlaying: Bool
+    let showAlbum: Bool
+    let onPlay: () -> Void
+    let onArtistSelect: (YMArtist) -> Void
+    let onAlbumSelect: (YMAlbum) -> Void
+
+    @UIState private var likesService = LikesService.shared
+    @UIState private var audioEngine = AudioPlayerEngine.shared
+    @UIState private var coordinator = NavigationCoordinator.shared
+    @UIState private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Track Number / Playing indicator
+            HStack(spacing: 0) {
+                if isPlaying {
+                    Image(systemName: "waveform")
+                        .foregroundColor(YMTheme.accent)
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(width: 36, alignment: .center)
                 } else {
-                    Text(track.displayTitle)
-                        .font(.system(size: 13, weight: audioEngine.currentTrack?.id == track.id ? .semibold : .regular))
-                        .foregroundStyle(audioEngine.currentTrack?.id == track.id ? Color.accentColor : Color.primary)
-                        .lineLimit(1)
+                    Text("\(index + 1)")
+                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        .foregroundStyle(YMTheme.fg40)
+                        .frame(width: 36, alignment: .center)
                 }
             }
-            .width(min: 110, ideal: 220)
 
-            // Column 4: Artist(s)
-            TableColumn("Исполнитель") { track in
-                if track.isSpacer {
-                    Color.clear.frame(maxWidth: .infinity, maxHeight: 32)
-                } else if track.isPlaceholder {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.08))
-                        .frame(width: 100, height: 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else if let firstArtist = track.artists.first {
+            // Cover thumbnail with hover play button
+            ZStack {
+                CachedCoverImage(
+                    coverUri: track.effectiveCoverUri,
+                    size: .small,
+                    displaySize: 40,
+                    cornerRadius: 6
+                )
+
+                if isHovered && !isPlaying {
                     Button {
-                        coordinator.navigate(to: .artist(id: firstArtist.id, name: firstArtist.name))
+                        onPlay()
                     } label: {
-                        Text(track.artistsString)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.black.opacity(0.55))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: "play.fill")
+                                .foregroundColor(Color.white)
+                                .font(.system(size: 13))
+                        }
                     }
                     .buttonStyle(.plain)
+                }
+            }
+            .frame(width: 40, height: 40)
+
+            // Title & Artists
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.displayTitle)
+                    .font(.system(size: 13, weight: isPlaying ? .bold : .medium))
+                    .foregroundStyle(isPlaying ? YMTheme.accent : YMTheme.fg)
+                    .lineLimit(1)
+
+                if !track.artists.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(track.artists) { artist in
+                            Button {
+                                onArtistSelect(artist)
+                            } label: {
+                                Text(artist.name)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(YMTheme.fg60)
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+
+                            if artist.id != track.artists.last?.id {
+                                Text("•")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(YMTheme.fg40)
+                            }
+                        }
+                    }
                 } else {
                     Text(track.artistsString)
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(YMTheme.fg60)
                         .lineLimit(1)
                 }
             }
-            .width(min: 80, ideal: 160)
+            .frame(minWidth: 180, alignment: .leading)
 
-            // Column 5: Album
-            TableColumn("Альбом") { track in
-                if track.isSpacer {
-                    Color.clear.frame(maxWidth: .infinity, maxHeight: 32)
-                } else if track.isPlaceholder {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.08))
-                        .frame(width: 80, height: 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else if let firstAlbum = track.albums.first {
+            Spacer()
+
+            // Album
+            if showAlbum {
+                if let album = track.albums.first {
                     Button {
-                        coordinator.navigate(to: .album(id: firstAlbum.id, title: firstAlbum.title))
+                        onAlbumSelect(album)
                     } label: {
-                        Text(firstAlbum.title)
+                        Text(album.title)
                             .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(YMTheme.fg60)
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
+                    .frame(width: 180, alignment: .leading)
                 } else {
-                    Text("-")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    Color.clear
+                        .frame(width: 180)
                 }
             }
-            .width(min: 60, ideal: 140)
 
-            // Column 6: Duration
-            TableColumn("Время") { track in
-                if track.isSpacer {
-                    Color.clear.frame(maxWidth: .infinity, maxHeight: 32)
-                } else if track.isPlaceholder {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.08))
-                        .frame(width: 30, height: 10)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                } else {
-                    Text(track.formattedDuration)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+            // Like Heart Button
+            Button {
+                Task {
+                    await likesService.toggleLike(track: track)
                 }
+            } label: {
+                Image(systemName: likesService.isLiked(trackId: track.id) ? "heart.fill" : "heart")
+                    .foregroundColor(likesService.isLiked(trackId: track.id) ? YMTheme.heartRed : YMTheme.fg40)
+                    .font(.system(size: 13))
             }
-            .width(46)
+            .buttonStyle(.plain)
+            .frame(width: 32, alignment: .center)
+            .help(likesService.isLiked(trackId: track.id) ? "Удалить из Мне нравится" : "Мне нравится")
+
+            // Duration
+            Text(track.formattedDuration)
+                .font(.system(size: 12).monospacedDigit())
+                .foregroundStyle(YMTheme.fg40)
+                .frame(width: 50, alignment: .trailing)
         }
-        .contextMenu(forSelectionType: YMTrack.ID.self) { selection in
-            if let selectedId = selection.first, let track = tracks.first(where: { $0.id == selectedId }), !track.isPlaceholder, !track.isSpacer {
-                Button("Воспроизвести") {
-                    onPlayTrack(track)
-                }
-                Button(likesService.isLiked(trackId: track.id) ? "Удалить из «Мне нравится»" : "Добавить в «Мне нравится»") {
-                    Task {
-                        await likesService.toggleLike(track: track)
-                    }
-                }
-                Button {
-                    audioEngine.startWave(forTrack: track)
-                } label: {
-                    Label("Запустить Мою волну по треку", systemImage: "waveform.badge.magnifyingglass")
-                }
-
-                Divider()
-
-                if let firstArtist = track.artists.first {
-                    Button {
-                        coordinator.navigate(to: .artist(id: firstArtist.id, name: firstArtist.name))
-                    } label: {
-                        Label("Перейти к исполнителю (\(firstArtist.name))", systemImage: "person.circle")
-                    }
-                }
-
-                if let firstAlbum = track.albums.first {
-                    Button {
-                        coordinator.navigate(to: .album(id: firstAlbum.id, title: firstAlbum.title))
-                    } label: {
-                        Label("Перейти к альбому (\(firstAlbum.title))", systemImage: "opticaldisc")
-                    }
-                }
-
-                Button {
-                    audioEngine.assignQueue([track], startingAt: 0)
-                    coordinator.isLyricsPresented = true
-                } label: {
-                    Label("Показать текст песни", systemImage: "quote.bubble")
-                }
-
-                if audioEngine.isWaveMode {
-                    Divider()
-                    Button {
-                        audioEngine.applyWaveTuning(.moreLikeThis, for: track)
-                    } label: {
-                        Label("Больше похожих треков", systemImage: "flame")
-                    }
-                    Button {
-                        audioEngine.applyWaveTuning(.lessLikeThis, for: track)
-                    } label: {
-                        Label("Меньше таких треков", systemImage: "hand.thumbsdown")
-                    }
+        .padding(.vertical, 5)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isPlaying ? Color.white.opacity(0.08) : (isHovered ? Color.white.opacity(0.05) : Color.clear))
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .onTapGesture(count: 2) {
+            onPlay()
+        }
+        .contextMenu {
+            Button("Воспроизвести сейчас") {
+                onPlay()
+            }
+            Button("Воспроизвести следующим") {
+                audioEngine.insertNext(track)
+            }
+            Button("Добавить в конец очереди") {
+                audioEngine.addToQueue([track])
+            }
+            Divider()
+            Button("Запустить Мою волну по треку") {
+                audioEngine.startWave(forTrack: track)
+            }
+            if let artist = track.artists.first {
+                Button("Перейти к исполнителю: \(artist.name)") {
+                    onArtistSelect(artist)
                 }
             }
-        } primaryAction: { selection in
-            if let selectedId = selection.first, let track = tracks.first(where: { $0.id == selectedId }), !track.isSpacer {
-                onPlayTrack(track)
+            if let album = track.albums.first {
+                Button("Перейти к альбому: \(album.title)") {
+                    onAlbumSelect(album)
+                }
+            }
+            Button("Показать текст песни") {
+                audioEngine.assignQueue([track], startingAt: 0)
+                coordinator.isLyricsPresented = true
+            }
+            Divider()
+            Button(likesService.isLiked(trackId: track.id) ? "Удалить из Мне нравится" : "Добавить в Мне нравится") {
+                Task {
+                    await likesService.toggleLike(track: track)
+                }
             }
         }
     }

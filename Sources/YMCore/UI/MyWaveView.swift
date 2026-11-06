@@ -20,6 +20,13 @@ public struct MyWaveView: View {
 
     public init() {}
 
+    private var displayedWaveTracks: [YMTrack] {
+        if audioEngine.isWaveMode && !audioEngine.queue.isEmpty {
+            return audioEngine.queue
+        }
+        return waveTracks
+    }
+
     public var body: some View {
         ScrollView(.vertical) {
             VStack(spacing: 24) {
@@ -96,7 +103,7 @@ public struct MyWaveView: View {
                     }
                     .padding(.horizontal, 24)
 
-                    if waveTracks.isEmpty && isLoadingWave {
+                    if displayedWaveTracks.isEmpty && isLoadingWave {
                         VStack(spacing: 14) {
                             ProgressView()
                                 .scaleEffect(1.2)
@@ -105,7 +112,7 @@ public struct MyWaveView: View {
                                 .foregroundStyle(YMTheme.fg40)
                         }
                         .frame(maxWidth: .infinity, minHeight: 200)
-                    } else if waveTracks.isEmpty {
+                    } else if displayedWaveTracks.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "waveform.path.ecg")
                                 .font(.system(size: 40))
@@ -123,9 +130,9 @@ public struct MyWaveView: View {
                         .frame(maxWidth: .infinity, minHeight: 200)
                     } else {
                         TrackTableView(
-                            tracks: waveTracks,
+                            tracks: displayedWaveTracks,
                             onPlayTrack: { track in
-                                if let idx = waveTracks.firstIndex(where: { $0.id == track.id }) {
+                                if let idx = displayedWaveTracks.firstIndex(where: { $0.id == track.id }) {
                                     audioEngine.playTrack(at: idx)
                                 }
                             },
@@ -135,7 +142,7 @@ public struct MyWaveView: View {
                                 }
                             }
                         )
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 14)
                     }
                 }
             }
@@ -144,9 +151,9 @@ public struct MyWaveView: View {
         }
         .ymScreenBackground()
         .onAppear {
-            if audioEngine.isWaveMode {
+            if audioEngine.isWaveMode && !audioEngine.queue.isEmpty {
                 waveTracks = audioEngine.queue
-            } else if waveTracks.isEmpty {
+            } else if waveTracks.isEmpty && !audioEngine.isWaveMode {
                 startWave(context: .myWaveDefault, vibe: .defaultWave)
             }
             setupWaveChangeHooks()

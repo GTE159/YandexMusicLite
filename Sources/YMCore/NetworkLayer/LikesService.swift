@@ -92,6 +92,7 @@ public final class LikesService {
     public private(set) var isLoadingMore: Bool = false
     public private(set) var isSyncing: Bool = false
     public private(set) var isIndexingCatalog: Bool = false
+    public private(set) var hasLoadedInitialBatch: Bool = false
 
     private var allLikedItems: [YMLikedTrackItem] = []
     private var inFlightBatches: Set<Int> = []
@@ -142,8 +143,17 @@ public final class LikesService {
         self.hasMoreLikes = self.likedTracks.contains { $0.isPlaceholder }
     }
 
-    /// Synchronizes liked items, creates placeholder skeleton rows for all tracks,
-    /// and immediately loads the first batch (up to 50 tracks).
+    /// Ensures user's liked collection is loaded on demand without requiring manual refresh.
+    public func ensureInitialLikesLoaded() async {
+        guard !hasLoadedInitialBatch || likedTracks.isEmpty else { return }
+        do {
+            _ = try await fetchLikedTracks(initialLimit: 50)
+        } catch {
+            print("[LikesService] Failed to load initial likes: \(error)")
+        }
+    }
+
+    /// Synchronizes liked items and immediately hydrates the first batch (up to 50 real tracks).
     public func fetchLikedTracks(initialLimit: Int = 50) async throws -> [YMTrack] {
         guard let resolvedUid = keychain.getUserId() else {
             print("[LikesService] No userId available to fetch liked tracks.")
@@ -166,51 +176,31 @@ public final class LikesService {
         guard !allLikedItems.isEmpty else {
             self.likedTracks = []
             self.hasMoreLikes = false
+            self.hasLoadedInitialBatch = true
             return []
         }
 
-        // Build list of all tracks: preserving already loaded tracks and filling rest with placeholders
-        let existingMap = Dictionary(self.likedTracks.filter { !$0.isPlaceholder }.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var items: [YMTrack] = []
-        items.reserveCapacity(allLikedItems.count)
-        for item in allLikedItems {
-            if let loaded = existingMap[item.id] ?? existingMap[item.trackIdentifier] {
-                items.append(loaded)
-            } else {
-                items.append(YMTrack.placeholder(id: item.trackIdentifier))
-            }
+        // Preserve any freshly liked local tracks that haven't propagated to API yet
+        let localUnsynced = self.likedTracks.filter { track in
+            !track.isPlaceholder && !allLikedItems.contains(where: { $0.id == track.id })
         }
-        self.likedTracks = items
 
-        // Immediately fetch the first batch (up to 50 tracks) to replace initial placeholders
         let initialBatchSize = min(initialLimit, allLikedItems.count)
-        let initialSlice = allLikedItems.prefix(initialBatchSize)
-        let neededIds = initialSlice.compactMap { item -> String? in
-            if existingMap[item.id] != nil || existingMap[item.trackIdentifier] != nil {
-                return nil
-            }
-            return item.id
+        let initialSlice = Array(allLikedItems.prefix(initialBatchSize))
+        let idsToFetch = initialSlice.map(\.id)
+
+        do {
+            let fullTracks = try await networkClient.fetchTracks(trackIds: idsToFetch)
+            var result = localUnsynced
+            result.append(contentsOf: fullTracks)
+            self.likedTracks = result
+            self.searchCatalog = fullTracks
+        } catch {
+            print("[LikesService] Error fetching initial batch: \(error)")
         }
 
-        if !neededIds.isEmpty {
-            do {
-                let fullTracks = try await networkClient.fetchTracks(trackIds: neededIds)
-                let trackMap = Dictionary(fullTracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-                for i in 0..<initialBatchSize {
-                    let item = allLikedItems[i]
-                    if self.likedTracks[i].isPlaceholder {
-                        if let loaded = trackMap[item.id] {
-                            self.likedTracks[i] = loaded
-                        }
-                    }
-                }
-                self.searchCatalog.append(contentsOf: fullTracks)
-            } catch {
-                print("[LikesService] Error fetching initial batch: \(error)")
-            }
-        }
-
-        self.hasMoreLikes = self.likedTracks.contains { $0.isPlaceholder }
+        self.hasMoreLikes = self.likedTracks.count < self.allLikedItems.count
+        self.hasLoadedInitialBatch = true
 
         if AudioQualitySettings.shared.preloadAllFavoritesInBackground {
             self.startBackgroundCatalogPreload()
@@ -341,13 +331,30 @@ public final class LikesService {
         return nil
     }
 
-    /// Loads the next batch of placeholders for infinite scroll compatibility
+    /// Loads the next batch of real tracks from allLikedItems as user scrolls
     public func loadMoreLikedTracks(batchSize: Int = 50) async {
-        guard let nextPlaceholderIndex = likedTracks.firstIndex(where: { $0.isPlaceholder }) else {
+        guard !isLoadingMore else { return }
+        let currentCount = likedTracks.count
+        guard currentCount < allLikedItems.count else {
             self.hasMoreLikes = false
             return
         }
-        loadBatchIfNeeded(atIndex: nextPlaceholderIndex)
+
+        self.isLoadingMore = true
+        defer { self.isLoadingMore = false }
+
+        let nextEnd = min(currentCount + batchSize, allLikedItems.count)
+        let slice = Array(allLikedItems[currentCount..<nextEnd])
+        let idsToFetch = slice.map(\.id)
+
+        do {
+            let fetched = try await networkClient.fetchTracks(trackIds: idsToFetch)
+            self.likedTracks.append(contentsOf: fetched)
+            self.searchCatalog.append(contentsOf: fetched)
+            self.hasMoreLikes = self.likedTracks.count < self.allLikedItems.count
+        } catch {
+            print("[LikesService] Error loading more liked tracks: \(error)")
+        }
     }
 
     /// Starts gentle background preloading of remaining tracks into searchCatalog and updates placeholders
@@ -515,6 +522,7 @@ public final class LikesService {
         isLoadingMore = false
         isSyncing = false
         isIndexingCatalog = false
+        hasLoadedInitialBatch = false
     }
 
     /// Toggles like status with optimistic UI update (including removing/inserting in likedTracks table) and rollback on failure

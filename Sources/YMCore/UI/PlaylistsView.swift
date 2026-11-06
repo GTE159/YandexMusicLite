@@ -153,163 +153,167 @@ public struct PlaylistsView: View {
     // MARK: - Playlist Detail View
 
     private func playlistDetailView(playlist: YMPlaylist) -> some View {
-        VStack(spacing: 0) {
-            // Top Navigation Bar
-            HStack(spacing: 12) {
-                Button {
-                    selectedPlaylist = nil
-                    playlistTracks = []
-                    playlistFilterQuery = ""
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Все плейлисты")
-                            .font(.system(size: 13, weight: .medium))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.white.opacity(0.08)))
-                    .overlay(Capsule().strokeBorder(YMTheme.border, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-
-                Text(playlist.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(YMTheme.fg60)
-
-                Spacer()
-            }
-            .padding(.top, 16)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 8)
-
-            // Playlist Hero Header
-            HStack(alignment: .bottom, spacing: 24) {
-                CachedCoverImage(
-                    coverUri: playlist.coverUri,
-                    size: .large,
-                    displaySize: 150,
-                    cornerRadius: YMTheme.cornerRadiusMedium
-                )
-                .frame(width: 150, height: 150)
-                .shadow(color: .black.opacity(0.4), radius: 18, y: 8)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("ПЛЕЙЛИСТ")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(YMTheme.fg40)
-                        .tracking(1.2)
-
-                    Text(playlist.title)
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(YMTheme.fg)
-                        .lineLimit(2)
-
-                    if let count = playlist.trackCount {
-                        Text("\(count) треков")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(YMTheme.fg60)
-                    }
-
-                    // Actions
-                    HStack(spacing: 12) {
-                        Button {
-                            audioEngine.isWaveMode = false
-                            audioEngine.setQueue(displayedPlaylistTracks, startingAt: 0)
-                        } label: {
-                            Label("Слушать всё", systemImage: "play.fill")
-                        }
-                        .buttonStyle(YMGlassPillButtonStyle(primary: true, height: 34))
-                        .disabled(displayedPlaylistTracks.isEmpty)
-
-                        Button {
-                            audioEngine.playShuffled(displayedPlaylistTracks)
-                        } label: {
-                            Label("Перемешать", systemImage: "shuffle")
-                        }
-                        .buttonStyle(YMGlassPillButtonStyle(primary: false, height: 34))
-                        .disabled(displayedPlaylistTracks.isEmpty)
-
-                        Button {
-                            audioEngine.startWave(forPlaylist: playlist, tracks: playlistTracks)
-                        } label: {
-                            Label("Волна по плейлисту", systemImage: "waveform.path.ecg")
-                        }
-                        .buttonStyle(YMGlassPillButtonStyle(primary: false, height: 34))
-                        .disabled(playlistTracks.isEmpty)
-                    }
-                    .padding(.top, 4)
-                }
-
-                Spacer()
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
-
-            // Filter Bar inside playlist
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundStyle(YMTheme.fg40)
-
-                TextField("Поиск по названиям треков и артистам...", text: $playlistFilterQuery)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-
-                if !playlistFilterQuery.isEmpty {
+        ScrollView(.vertical) {
+            VStack(spacing: 0) {
+                // Top Navigation Bar
+                HStack(spacing: 12) {
                     Button {
+                        selectedPlaylist = nil
+                        playlistTracks = []
                         playlistFilterQuery = ""
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(YMTheme.fg40)
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Все плейлисты")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.white.opacity(0.08)))
+                        .overlay(Capsule().strokeBorder(YMTheme.border, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.06))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(YMTheme.border, lineWidth: 1))
-            )
-            .padding(.horizontal, 24)
-            .padding(.bottom, 10)
 
-            Divider()
+                    Text(playlist.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(YMTheme.fg60)
+
+                    Spacer()
+                }
+                .padding(.top, 16)
                 .padding(.horizontal, 24)
+                .padding(.bottom, 8)
 
-            if isLoadingTracks && playlistTracks.isEmpty {
-                VStack(spacing: 14) {
-                    ProgressView()
-                    Text("Загрузка треков...")
-                        .font(.caption)
-                        .foregroundStyle(YMTheme.fg40)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if displayedPlaylistTracks.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "music.note")
-                        .font(.system(size: 36))
-                        .foregroundStyle(YMTheme.fg40)
-                    Text(playlistFilterQuery.isEmpty ? "В плейлисте нет треков" : "Ничего не найдено по запросу")
-                        .font(.headline)
-                        .foregroundStyle(YMTheme.fg)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                TrackTableView(
-                    tracks: displayedPlaylistTracks,
-                    onPlayTrack: { track in
-                        audioEngine.isWaveMode = false
-                        if let idx = displayedPlaylistTracks.firstIndex(where: { $0.id == track.id }) {
-                            audioEngine.setQueue(displayedPlaylistTracks, startingAt: idx)
+                // Playlist Hero Header
+                HStack(alignment: .bottom, spacing: 24) {
+                    CachedCoverImage(
+                        coverUri: playlist.coverUri,
+                        size: .large,
+                        displaySize: 150,
+                        cornerRadius: YMTheme.cornerRadiusMedium
+                    )
+                    .frame(width: 150, height: 150)
+                    .shadow(color: .black.opacity(0.4), radius: 18, y: 8)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ПЛЕЙЛИСТ")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(YMTheme.fg40)
+                            .tracking(1.2)
+
+                        Text(playlist.title)
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(YMTheme.fg)
+                            .lineLimit(2)
+
+                        if let count = playlist.trackCount {
+                            Text("\(count) треков")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(YMTheme.fg60)
                         }
+
+                        // Actions
+                        HStack(spacing: 12) {
+                            Button {
+                                audioEngine.isWaveMode = false
+                                audioEngine.setQueue(displayedPlaylistTracks, startingAt: 0)
+                            } label: {
+                                Label("Слушать всё", systemImage: "play.fill")
+                            }
+                            .buttonStyle(YMGlassPillButtonStyle(primary: true, height: 34))
+                            .disabled(displayedPlaylistTracks.isEmpty)
+
+                            Button {
+                                audioEngine.playShuffled(displayedPlaylistTracks)
+                            } label: {
+                                Label("Перемешать", systemImage: "shuffle")
+                            }
+                            .buttonStyle(YMGlassPillButtonStyle(primary: false, height: 34))
+                            .disabled(displayedPlaylistTracks.isEmpty)
+
+                            Button {
+                                audioEngine.startWave(forPlaylist: playlist, tracks: playlistTracks)
+                            } label: {
+                                Label("Волна по плейлисту", systemImage: "waveform.path.ecg")
+                            }
+                            .buttonStyle(YMGlassPillButtonStyle(primary: false, height: 34))
+                            .disabled(playlistTracks.isEmpty)
+                        }
+                        .padding(.top, 4)
                     }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+
+                // Filter Bar inside playlist
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 12))
+                        .foregroundStyle(YMTheme.fg40)
+
+                    TextField("Поиск по названиям треков и артистам...", text: $playlistFilterQuery)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+
+                    if !playlistFilterQuery.isEmpty {
+                        Button {
+                            playlistFilterQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(YMTheme.fg40)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(YMTheme.border, lineWidth: 1))
                 )
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 10)
+
+                Divider()
+                    .overlay(YMTheme.border)
+                    .padding(.horizontal, 24)
+
+                if isLoadingTracks && playlistTracks.isEmpty {
+                    VStack(spacing: 14) {
+                        ProgressView()
+                        Text("Загрузка треков...")
+                            .font(.caption)
+                            .foregroundStyle(YMTheme.fg40)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 200)
+                } else if displayedPlaylistTracks.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 36))
+                            .foregroundStyle(YMTheme.fg40)
+                        Text(playlistFilterQuery.isEmpty ? "В плейлисте нет треков" : "Ничего не найдено по запросу")
+                            .font(.headline)
+                            .foregroundStyle(YMTheme.fg)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 200)
+                } else {
+                    TrackTableView(
+                        tracks: displayedPlaylistTracks,
+                        onPlayTrack: { track in
+                            audioEngine.isWaveMode = false
+                            if let idx = displayedPlaylistTracks.firstIndex(where: { $0.id == track.id }) {
+                                audioEngine.setQueue(displayedPlaylistTracks, startingAt: idx)
+                            }
+                        }
+                    )
+                    .padding(.horizontal, 14)
+                }
             }
+            .padding(.bottom, 80)
         }
     }
 
