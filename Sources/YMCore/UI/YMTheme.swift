@@ -3,6 +3,8 @@ import SwiftUI
 /// Modern theme and visual design tokens inspired by native macOS styling in KinoPohuy / Apple Music.
 public enum YMTheme {
     public static let bg = Color(red: 11 / 255, green: 11 / 255, blue: 13 / 255)
+    public static let sidebarBg = Color(red: 14 / 255, green: 14 / 255, blue: 17 / 255)
+    public static let playerBg = Color(red: 16 / 255, green: 16 / 255, blue: 20 / 255)
     public static let surface = Color(red: 22 / 255, green: 22 / 255, blue: 26 / 255)
     public static let surfaceHigh = Color(red: 32 / 255, green: 32 / 255, blue: 38 / 255)
     public static let border = Color.white.opacity(0.08)

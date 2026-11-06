@@ -27,6 +27,7 @@ public struct SettingsView: View {
                 .padding(.top, 20)
 
                 Divider()
+                    .overlay(YMTheme.border)
 
                 // Section 1: User Account Card
                 if let user = authService.currentUser {

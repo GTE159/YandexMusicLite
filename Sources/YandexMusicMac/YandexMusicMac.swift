@@ -60,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.title = ""
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.backgroundColor = NSColor(red: 11 / 255, green: 11 / 255, blue: 13 / 255, alpha: 1.0)
             window.toolbar = nil
             window.isMovableByWindowBackground = true
             WindowState.shared.update(from: window)
@@ -93,13 +95,15 @@ struct YandexMusicMacApp: App {
                     LoginView()
                 }
             }
-            .frame(minWidth: 480, minHeight: 380)
+            .preferredColorScheme(.dark)
+            .tint(YMTheme.accent)
+            .frame(minWidth: 880, minHeight: 560)
             .onAppear {
                 appDelegate.configureMainWindowIfNeeded()
             }
         }
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 960, height: 640)
+        .defaultSize(width: 1100, height: 720)
         .commands {
             CommandMenu("Окно плеера") {
                 Button("Показать главное окно") {

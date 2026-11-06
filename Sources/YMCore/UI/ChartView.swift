@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Chart (Чарт) view showing the Top 100 most popular tracks in Yandex Music with positions and shifts.
+/// Chart (Чарт) view showing the Top 100 most popular tracks in Yandex Music with positions, shifts, and rich actions.
 public struct ChartView: View {
     @UIState private var chartItems: [YMChartItem] = []
     @UIState private var isLoading = true
@@ -19,15 +19,15 @@ public struct ChartView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Header
+            // Top Header
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Чарт")
-                        .font(.system(size: 26, weight: .bold))
+                        .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(YMTheme.fg)
 
                     Text("Топ треков, которые прямо сейчас слушают в Яндекс Музыке")
-                        .font(.caption)
+                        .font(.system(size: 13))
                         .foregroundStyle(YMTheme.fg60)
                 }
 
@@ -37,18 +37,49 @@ public struct ChartView: View {
                     Button {
                         audioEngine.assignQueue(chartTracks, startingAt: 0)
                     } label: {
-                        Label("Слушать чарт", systemImage: "play.fill")
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 12))
+                            Text("Слушать чарт")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
                     }
-                    .buttonStyle(YMGlassPillButtonStyle(primary: true, height: 34))
+                    .buttonStyle(YMGlassPillButtonStyle(primary: true, height: 36))
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.top, 20)
-            .padding(.bottom, 14)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+
+            // Table Column Headers
+            HStack(spacing: 12) {
+                Text("#")
+                    .frame(width: 44, alignment: .center)
+
+                Text("ТРЕК")
+                    .frame(minWidth: 200, alignment: .leading)
+
+                Spacer()
+
+                Text("АЛЬБОМ")
+                    .frame(width: 180, alignment: .leading)
+
+                Text("♡")
+                    .frame(width: 32, alignment: .center)
+
+                Text("ВРЕМЯ")
+                    .frame(width: 50, alignment: .trailing)
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(YMTheme.fg40)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 8)
 
             Divider()
+                .overlay(YMTheme.border)
                 .padding(.horizontal, 24)
 
+            // Main Content
             if isLoading {
                 VStack(spacing: 16) {
                     ProgressView()
@@ -74,7 +105,7 @@ public struct ChartView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical) {
-                    LazyVStack(spacing: 0) {
+                    LazyVStack(spacing: 2) {
                         ForEach(Array(chartItems.enumerated()), id: \.element.id) { index, item in
                             if let track = item.track {
                                 ChartTrackRow(
@@ -95,7 +126,9 @@ public struct ChartView: View {
                             }
                         }
                     }
-                    .padding(.bottom, 80)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 4)
+                    .padding(.bottom, 90)
                 }
             }
         }
@@ -127,6 +160,8 @@ public struct ChartView: View {
     }
 }
 
+// MARK: - Chart Track Row
+
 private struct ChartTrackRow: View {
     let item: YMChartItem
     let track: YMTrack
@@ -137,117 +172,206 @@ private struct ChartTrackRow: View {
     let onAlbumSelect: (YMAlbum) -> Void
 
     @UIState private var likesService = LikesService.shared
+    @UIState private var audioEngine = AudioPlayerEngine.shared
+    @UIState private var coordinator = NavigationCoordinator.shared
     @UIState private var isHovered = false
 
+    private var position: Int {
+        item.chart?.position ?? (index + 1)
+    }
+
     var body: some View {
-        HStack(spacing: 14) {
-            // Position rank
-            HStack(spacing: 4) {
-                let pos = item.chart?.position ?? (index + 1)
-                Text("\(pos)")
-                    .font(.system(size: 14, weight: .bold).monospacedDigit())
-                    .foregroundStyle(pos <= 3 ? YMTheme.accent : YMTheme.fg80)
-                    .frame(width: 28, alignment: .trailing)
-
-                shiftBadge
-                    .frame(width: 16)
-            }
-
-            // Play indicator
-            Button {
-                onPlay()
-            } label: {
-                if isPlaying {
-                    Image(systemName: "waveform")
-                        .foregroundColor(YMTheme.accent)
-                        .font(.system(size: 13))
-                } else {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(isHovered ? YMTheme.fg : YMTheme.fg60)
-                }
-            }
-            .buttonStyle(.plain)
-            .frame(width: 20)
-
-            // Cover
-            CachedCoverImage(
-                coverUri: track.effectiveCoverUri,
-                size: .small,
-                displaySize: 36,
-                cornerRadius: 4
-            )
-
-            // Title & Artists
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.displayTitle)
-                    .font(.system(size: 13, weight: isPlaying ? .semibold : .regular))
-                    .foregroundStyle(isPlaying ? YMTheme.accent : YMTheme.fg)
-                    .lineLimit(1)
-
-                HStack(spacing: 4) {
-                    ForEach(track.artists) { artist in
-                        Button {
-                            onArtistSelect(artist)
-                        } label: {
-                            Text(artist.name)
-                                .font(.caption)
-                                .foregroundStyle(YMTheme.fg40)
-                                .lineLimit(1)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .frame(minWidth: 140, alignment: .leading)
-
+        HStack(spacing: 12) {
+            rankView
+            coverAndPlayView
+            titleAndArtistsView
             Spacer()
-
-            // Album
-            if let album = track.albums.first {
-                Button {
-                    onAlbumSelect(album)
-                } label: {
-                    Text(album.title)
-                        .font(.caption)
-                        .foregroundStyle(YMTheme.fg40)
-                        .lineLimit(1)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: 160, alignment: .leading)
-            }
-
-            // Like Button
-            Button {
-                Task {
-                    await likesService.toggleLike(track: track)
-                }
-            } label: {
-                Image(systemName: likesService.isLiked(trackId: track.id) ? "heart.fill" : "heart")
-                    .foregroundColor(likesService.isLiked(trackId: track.id) ? YMTheme.heartRed : YMTheme.fg40)
-                    .font(.system(size: 12))
-            }
-            .buttonStyle(.plain)
-            .frame(width: 24)
-
-            // Duration
-            Text(track.formattedDuration)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(YMTheme.fg40)
-                .frame(width: 44, alignment: .trailing)
+            albumView
+            likeButtonView
+            durationView
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 24)
-        .background(isHovered ? Color.white.opacity(0.04) : (isPlaying ? Color.white.opacity(0.02) : Color.clear))
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isPlaying ? Color.white.opacity(0.08) : (isHovered ? Color.white.opacity(0.05) : Color.clear))
+        )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .onTapGesture(count: 2) {
             onPlay()
         }
+        .contextMenu {
+            rowContextMenu
+        }
     }
 
     @ViewBuilder
-    private var shiftBadge: some View {
+    private var rankView: some View {
+        HStack(spacing: 3) {
+            if position <= 3 {
+                Text("\(position)")
+                    .font(.system(size: 14, weight: .bold).monospacedDigit())
+                    .foregroundColor(YMTheme.accent)
+                    .frame(width: 22, alignment: .trailing)
+            } else {
+                Text("\(position)")
+                    .font(.system(size: 13, weight: .medium).monospacedDigit())
+                    .foregroundStyle(YMTheme.fg60)
+                    .frame(width: 22, alignment: .trailing)
+            }
+
+            shiftIndicator
+                .frame(width: 14, alignment: .center)
+        }
+        .frame(width: 44)
+    }
+
+    @ViewBuilder
+    private var coverAndPlayView: some View {
+        ZStack {
+            CachedCoverImage(
+                coverUri: track.effectiveCoverUri,
+                size: .small,
+                displaySize: 40,
+                cornerRadius: 6
+            )
+
+            if isPlaying {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.6))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "waveform")
+                    .foregroundColor(YMTheme.accent)
+                    .font(.system(size: 14, weight: .bold))
+            } else if isHovered {
+                Button {
+                    onPlay()
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.black.opacity(0.55))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: "play.fill")
+                            .foregroundColor(Color.white)
+                            .font(.system(size: 13))
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(width: 40, height: 40)
+    }
+
+    @ViewBuilder
+    private var titleAndArtistsView: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(track.displayTitle)
+                .font(.system(size: 13, weight: isPlaying ? .bold : .medium))
+                .foregroundStyle(isPlaying ? YMTheme.accent : YMTheme.fg)
+                .lineLimit(1)
+
+            HStack(spacing: 4) {
+                ForEach(track.artists) { artist in
+                    Button {
+                        onArtistSelect(artist)
+                    } label: {
+                        Text(artist.name)
+                            .font(.system(size: 12))
+                            .foregroundStyle(YMTheme.fg60)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+
+                    if artist.id != track.artists.last?.id {
+                        Text("•")
+                            .font(.system(size: 8))
+                            .foregroundStyle(YMTheme.fg40)
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 200, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var albumView: some View {
+        if let album = track.albums.first {
+            Button {
+                onAlbumSelect(album)
+            } label: {
+                Text(album.title)
+                    .font(.system(size: 12))
+                    .foregroundStyle(YMTheme.fg60)
+                    .lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            .frame(width: 180, alignment: .leading)
+        } else {
+            Color.clear
+                .frame(width: 180)
+        }
+    }
+
+    @ViewBuilder
+    private var likeButtonView: some View {
+        Button {
+            Task {
+                await likesService.toggleLike(track: track)
+            }
+        } label: {
+            Image(systemName: likesService.isLiked(trackId: track.id) ? "heart.fill" : "heart")
+                .foregroundColor(likesService.isLiked(trackId: track.id) ? YMTheme.heartRed : YMTheme.fg40)
+                .font(.system(size: 13))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 32, alignment: .center)
+        .help(likesService.isLiked(trackId: track.id) ? "Удалить из Мне нравится" : "Нравится")
+    }
+
+    @ViewBuilder
+    private var durationView: some View {
+        Text(track.formattedDuration)
+            .font(.system(size: 12).monospacedDigit())
+            .foregroundStyle(YMTheme.fg40)
+            .frame(width: 50, alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private var rowContextMenu: some View {
+        Button("Воспроизвести сейчас") {
+            onPlay()
+        }
+        Button("Воспроизвести следующим") {
+            audioEngine.insertNext(track)
+        }
+        Button("Добавить в конец очереди") {
+            audioEngine.addToQueue([track])
+        }
+        Divider()
+        Button("Запустить Мою волну по треку") {
+            audioEngine.startWave(forTrack: track)
+        }
+        if let artist = track.artists.first {
+            Button("Перейти к исполнителю: \(artist.name)") {
+                onArtistSelect(artist)
+            }
+        }
+        if let album = track.albums.first {
+            Button("Перейти к альбому: \(album.title)") {
+                onAlbumSelect(album)
+            }
+        }
+        Divider()
+        Button(likesService.isLiked(trackId: track.id) ? "Удалить из Мне нравится" : "Добавить в Мне нравится") {
+            Task {
+                await likesService.toggleLike(track: track)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var shiftIndicator: some View {
         if let chart = item.chart {
             switch chart.progress {
             case "up":

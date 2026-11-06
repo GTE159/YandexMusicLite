@@ -50,14 +50,15 @@ public struct TrackTableView: View {
                         HStack(spacing: 8) {
                             if audioEngine.currentTrack?.id == track.id && audioEngine.isPlaying {
                                 Image(systemName: "waveform")
-                                    .foregroundStyle(.tint)
-                                    .font(.system(size: 11))
+                                    .foregroundStyle(YMTheme.accent)
+                                    .font(.system(size: 11, weight: .bold))
                             } else {
                                 Button {
                                     onPlayTrack(track)
                                 } label: {
                                     Image(systemName: "play.fill")
                                         .font(.system(size: 10))
+                                        .foregroundStyle(YMTheme.fg60)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -68,7 +69,7 @@ public struct TrackTableView: View {
                                 }
                             } label: {
                                 Image(systemName: likesService.isLiked(trackId: track.id) ? "heart.fill" : "heart")
-                                    .foregroundColor(likesService.isLiked(trackId: track.id) ? .red : .secondary.opacity(0.5))
+                                    .foregroundColor(likesService.isLiked(trackId: track.id) ? YMTheme.heartRed : YMTheme.fg40)
                                     .font(.system(size: 11))
                             }
                             .buttonStyle(.plain)

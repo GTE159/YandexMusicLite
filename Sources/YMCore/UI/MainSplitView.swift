@@ -24,165 +24,254 @@ public enum SidebarSection: String, CaseIterable, Identifiable {
 
 /// Main macOS NavigationSplitView orchestrating the sidebar, NavigationStack, and the Player Bar.
 public struct MainSplitView: View {
-    @UIState private var selectedSection: SidebarSection? = .myWave
+    @UIState private var selectedSection: SidebarSection = .myWave
     @UIState private var coordinator = NavigationCoordinator.shared
     @UIState private var authService = AuthService.shared
     @UIState private var audioEngine = AudioPlayerEngine.shared
     @UIState private var rotorService = RotorService.shared
     @UIState private var likesService = LikesService.shared
     @UIState private var windowState = WindowState.shared
-    @UIState private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @UIState private var columnVisibility: NavigationSplitViewVisibility = .all
 
     public init() {}
 
     public var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            VStack(alignment: .leading, spacing: 0) {
-                // Fixed top spacing to keep sidebar items cleanly below window controls
-                Color.clear
-                    .frame(height: 52)
-
-                // Sidebar Navigation List
-                List(selection: $selectedSection) {
-                    Section("Медиатека") {
-                        sidebarRow(section: .myWave)
-                        sidebarRow(section: .chart, badge: "ТОП-100")
-                        sidebarRow(
-                            section: .favorites,
-                            badge: likesService.likedTrackIds.isEmpty ? nil : "\(likesService.likedTrackIds.count)"
-                        )
-                        sidebarRow(section: .playlists)
-                    }
-
-                    Section("Обзор и настройки") {
-                        sidebarRow(section: .search)
-                        sidebarRow(section: .settings)
-                    }
-                }
-                .listStyle(.sidebar)
-                .onChange(of: selectedSection) {
-                    coordinator.popToRoot()
-                }
-
-                Spacer()
-
-                // User account card in sidebar footer
-                if let user = authService.currentUser {
-                    Divider()
-                        .padding(.horizontal, 12)
-
-                    HStack(spacing: 10) {
-                        Image(systemName: "person.crop.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundStyle(YMTheme.accent)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(user.displayName)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(YMTheme.fg)
-                                .lineLimit(1)
-
-                            if user.hasActiveSubscription {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 9))
-                                    Text("Плюс активен")
-                                        .font(.caption2.weight(.semibold))
-                                }
-                                .foregroundColor(YMTheme.accent)
-                            }
-                        }
-
-                        Spacer()
-
-                        Button {
-                            authService.signOut()
-                        } label: {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .font(.system(size: 13))
-                                .foregroundStyle(YMTheme.fg40)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Выйти из аккаунта")
-                    }
-                    .padding(14)
-                }
-            }
-            .ignoresSafeArea(.container, edges: .top)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
+            sidebarContent
+                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 300)
         } detail: {
-            VStack(spacing: 0) {
-                NavigationStack(path: $coordinator.path) {
-                    Group {
-                        switch selectedSection {
-                        case .myWave:
-                            MyWaveView()
-                        case .chart:
-                            ChartView()
-                        case .favorites:
-                            FavoritesListView()
-                        case .playlists:
-                            PlaylistsView()
-                        case .search:
-                            SearchView()
-                        case .settings:
-                            SettingsView()
-                        case .none:
-                            Text("Выберите раздел")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .navigationDestination(for: AppRoute.self) { route in
-                        switch route {
-                        case .artist(let id, let name):
-                            ArtistDetailView(artistId: id, artistName: name)
-                        case .album(let id, let title):
-                            AlbumDetailView(albumId: id, albumTitle: title)
-                        }
-                    }
-                }
-
-                PlayerBarView()
-            }
-            .ignoresSafeArea(.container, edges: .top)
-            .navigationTitle("")
-            .toolbar(.hidden, for: .windowToolbar)
+            detailContent
         }
+        .preferredColorScheme(.dark)
         .toolbar(.hidden, for: .windowToolbar)
-        .frame(minWidth: 500, minHeight: 400)
+        .frame(minWidth: 880, minHeight: 560)
         .onAppear {
             setupRotorAudioHooks()
         }
     }
 
-    @ViewBuilder
-    private func sidebarRow(section: SidebarSection, badge: String? = nil) -> some View {
-        NavigationLink(value: section) {
-            HStack {
-                Label {
-                    Text(section.rawValue)
-                        .font(.system(size: 13, weight: selectedSection == section ? .semibold : .regular))
-                } icon: {
-                    Image(systemName: section.iconName)
-                        .foregroundColor(
-                            section == .favorites ? YMTheme.heartRed :
-                            (section == .chart ? YMTheme.accent : (selectedSection == section ? YMTheme.accent : .primary))
-                        )
-                }
+    // MARK: - Sidebar
 
-                Spacer()
+    @ViewBuilder
+    private var sidebarContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Fixed top spacing to keep sidebar items cleanly below window controls
+            Color.clear
+                .frame(height: 52)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Section 1: Медиатека
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Медиатека")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(YMTheme.fg40)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 4)
+
+                        sidebarButton(section: .myWave)
+
+                        sidebarButton(
+                            section: .chart,
+                            badge: "ТОП-100",
+                            badgeColor: YMTheme.accent
+                        )
+
+                        sidebarButton(
+                            section: .favorites,
+                            badge: likesService.likedTrackIds.isEmpty ? nil : formatLikedCount(likesService.likedTrackIds.count),
+                            badgeColor: YMTheme.fg60
+                        )
+
+                        sidebarButton(section: .playlists)
+                    }
+
+                    // Section 2: Обзор и настройки
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Обзор и настройки")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(YMTheme.fg40)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 4)
+
+                        sidebarButton(section: .search)
+                        sidebarButton(section: .settings)
+                    }
+                }
+                .padding(.horizontal, 10)
+            }
+
+            Spacer()
+
+            // User account card in sidebar footer
+            if let user = authService.currentUser {
+                Divider()
+                    .overlay(YMTheme.border)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(YMTheme.surfaceHigh)
+                            .frame(width: 34, height: 34)
+                            .overlay(Circle().strokeBorder(YMTheme.border, lineWidth: 1))
+
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(YMTheme.accent)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(user.displayName)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(YMTheme.fg)
+                            .lineLimit(1)
+
+                        if user.hasActiveSubscription {
+                            HStack(spacing: 3) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 8))
+                                Text("Плюс активен")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .foregroundColor(YMTheme.accent)
+                        }
+                    }
+
+                    Spacer()
+
+                    Button {
+                        authService.signOut()
+                    } label: {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .font(.system(size: 13))
+                            .foregroundStyle(YMTheme.fg40)
+                            .padding(6)
+                            .background(Circle().fill(Color.white.opacity(0.04)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Выйти из аккаунта")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(YMTheme.surface.opacity(0.6))
+                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(YMTheme.border, lineWidth: 1))
+                )
+                .padding(.horizontal, 10)
+                .padding(.bottom, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(YMTheme.sidebarBg.ignoresSafeArea())
+        .overlay(alignment: .trailing) {
+            YMTheme.border
+                .frame(width: 1)
+                .ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder
+    private func sidebarButton(
+        section: SidebarSection,
+        badge: String? = nil,
+        badgeColor: Color = YMTheme.fg60
+    ) -> some View {
+        let isSelected = selectedSection == section
+
+        Button {
+            if selectedSection != section {
+                selectedSection = section
+                coordinator.popToRoot()
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: section.iconName)
+                    .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(
+                        isSelected ? YMTheme.accent :
+                        (section == .favorites ? YMTheme.heartRed : YMTheme.fg60)
+                    )
+                    .frame(width: 20, alignment: .center)
+
+                Text(section.rawValue)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? YMTheme.fg : YMTheme.fg80)
+                    .lineLimit(1)
+
+                Spacer(minLength: 6)
 
                 if let badge = badge {
                     Text(badge)
                         .font(.system(size: 10, weight: .bold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.white.opacity(0.12)))
-                        .foregroundStyle(YMTheme.fg60)
+                        .background(
+                            Capsule()
+                                .fill(badgeColor == YMTheme.accent ? YMTheme.accent.opacity(0.18) : Color.white.opacity(0.08))
+                        )
+                        .foregroundStyle(badgeColor)
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? Color.white.opacity(0.12) : Color.clear)
+            )
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+    }
+
+    private func formatLikedCount(_ count: Int) -> String {
+        if count >= 1000 {
+            return "\(count / 1000) \(count % 1000)"
+        }
+        return "\(count)"
+    }
+
+    // MARK: - Detail Content
+
+    @ViewBuilder
+    private var detailContent: some View {
+        VStack(spacing: 0) {
+            NavigationStack(path: $coordinator.path) {
+                Group {
+                    switch selectedSection {
+                    case .myWave:
+                        MyWaveView()
+                    case .chart:
+                        ChartView()
+                    case .favorites:
+                        FavoritesListView()
+                    case .playlists:
+                        PlaylistsView()
+                    case .search:
+                        SearchView()
+                    case .settings:
+                        SettingsView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationDestination(for: AppRoute.self) { route in
+                    switch route {
+                    case .artist(let id, let name):
+                        ArtistDetailView(artistId: id, artistName: name)
+                    case .album(let id, let title):
+                        AlbumDetailView(albumId: id, albumTitle: title)
+                    }
+                }
+            }
+
+            PlayerBarView()
+        }
+        .ignoresSafeArea(.container, edges: .top)
+        .navigationTitle("")
+        .toolbar(.hidden, for: .windowToolbar)
+        .background(YMTheme.bg.ignoresSafeArea())
     }
 
     private func setupRotorAudioHooks() {
@@ -202,49 +291,6 @@ public struct MainSplitView: View {
         audioEngine.onTrackSkipped = { track, playedSeconds in
             Task {
                 try? await rotorService.sendTrackSkipped(track: track, playedSeconds: playedSeconds)
-            }
-        }
-
-        audioEngine.onStartCustomWaveRequested = { [weak audioEngine] context, vibe in
-            Task { @MainActor in
-                self.selectedSection = .myWave
-                guard let audioEngine = audioEngine else { return }
-                do {
-                    let tracks = try await rotorService.startWave(context: context, vibe: vibe)
-                    audioEngine.activeWaveContext = context
-                    audioEngine.activeWaveVibe = vibe ?? .defaultWave
-                    audioEngine.isWaveMode = true
-                    audioEngine.setQueue(tracks, startingAt: 0)
-                } catch {
-                    print("[MainSplitView] Failed custom wave: \(error)")
-                }
-            }
-        }
-
-        // Fetch next batch only if wave mode is active
-        audioEngine.onQueueNeedsMoreTracks = {
-            Task { @MainActor in
-                guard audioEngine.isWaveMode else { return }
-                if let lastTrack = audioEngine.queue.last {
-                    let history = audioEngine.queue.suffix(25).map(\.rotorTrackIdentifier)
-                    if let nextTracks = try? await rotorService.fetchNextBatch(
-                        lastTrackId: lastTrack.rotorTrackIdentifier,
-                        queueHistory: history
-                    ), !nextTracks.isEmpty {
-                        let existingIds = Set(audioEngine.queue.map(\.id))
-                        let uniqueNew = nextTracks.filter { !existingIds.contains($0.id) }
-                        audioEngine.appendToQueue(uniqueNew)
-                    }
-                }
-            }
-        }
-
-        // Wire system remote like command to current track
-        RemoteCommandManager.shared.onLikeToggled = {
-            Task { @MainActor in
-                if let track = audioEngine.currentTrack {
-                    await likesService.toggleLike(track: track)
-                }
             }
         }
     }

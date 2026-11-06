@@ -96,6 +96,22 @@ public final class AudioPlayerEngine {
         setQueue(newQueue, startingAt: index)
     }
 
+    public func addToQueue(_ tracks: [YMTrack]) {
+        appendToQueue(tracks)
+    }
+
+    public func insertNext(_ track: YMTrack) {
+        let insertIndex = currentIndex + 1
+        if insertIndex <= queue.count {
+            self.queue.insert(track, at: insertIndex)
+            if !isWaveMode && isShuffleEnabled {
+                self.unshuffledQueue.append(track)
+            }
+        } else {
+            appendToQueue([track])
+        }
+    }
+
     public func appendToQueue(_ tracks: [YMTrack]) {
         self.queue.append(contentsOf: tracks)
         if isWaveMode && currentIndex > 40 {

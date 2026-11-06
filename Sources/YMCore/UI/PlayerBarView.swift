@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Bottom Player Bar anchored via safeAreaInset.
-/// Uses isolated `@Observable PlaybackProgressTracker` to eliminate redundant redraws of other components.
+/// Modern macOS dark glass design with signature Yandex yellow accents,
+/// custom sleek scrubbers, and isolated PlaybackProgressTracker redraw boundaries.
 public struct PlayerBarView: View {
     @UIState private var audioEngine = AudioPlayerEngine.shared
     @UIState private var likesService = LikesService.shared
@@ -9,272 +10,321 @@ public struct PlayerBarView: View {
     @UIState private var coordinator = NavigationCoordinator.shared
     @UIState private var isFlameActive = false
     @UIState private var showVolumePopover = false
+    @UIState private var isMuted = false
+    @UIState private var previousVolume: Float = 1.0
 
     public init() {}
 
     public var body: some View {
         HStack(spacing: 0) {
-            // Left: Track cover, Title, Artist, Like button
-            HStack(spacing: windowState.isMiniWidth ? 8 : 12) {
-                let coverSize: CGFloat = windowState.isMiniWidth ? 36 : 44
-                if let track = audioEngine.currentTrack {
-                    Button {
-                        if let album = track.albums.first {
-                            coordinator.navigate(to: .album(id: album.id, title: album.title))
-                        }
-                    } label: {
-                        CachedCoverImage(
-                            coverUri: track.effectiveCoverUri,
-                            size: .small,
-                            displaySize: coverSize,
-                            cornerRadius: 6
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .help("Перейти к альбому")
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(track.displayTitle)
-                            .font(.system(size: windowState.isMiniWidth ? 12 : 13, weight: .medium))
-                            .lineLimit(1)
-
-                        if let firstArtist = track.artists.first {
-                            Button {
-                                coordinator.navigate(to: .artist(id: firstArtist.id, name: firstArtist.name))
-                            } label: {
-                                Text(track.artistsString)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Перейти к исполнителю")
-                        } else {
-                            Text(track.artistsString)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                    .frame(minWidth: 60, maxWidth: windowState.isCompactWidth ? 120 : 180, alignment: .leading)
-                    .layoutPriority(1)
-
-                    Button {
-                        Task {
-                            await likesService.toggleLike(track: track)
-                        }
-                    } label: {
-                        Image(systemName: likesService.isLiked(trackId: track.id) ? "heart.fill" : "heart")
-                            .foregroundColor(likesService.isLiked(trackId: track.id) ? .red : .secondary)
-                            .font(.system(size: windowState.isMiniWidth ? 13 : 15))
-                    }
-                    .buttonStyle(.plain)
-
-                    if !windowState.isMiniWidth {
-                        Button {
-                            audioEngine.startWave(forTrack: track)
-                        } label: {
-                            Image(systemName: "waveform.badge.magnifyingglass")
-                                .font(.system(size: 14))
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Запустить волну по этому треку")
-                    }
-                } else {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.secondary.opacity(0.1))
-                        .frame(width: coverSize, height: coverSize)
-
-                    Text("Ничего не играет")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(minWidth: 60, maxWidth: windowState.isCompactWidth ? 120 : 180, alignment: .leading)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Left: Track cover, Title, Artist, Like & Wave buttons
+            leftTrackSection
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             // Center: Playback Controls & Isolated Progress Slider (strictly centered)
-            VStack(spacing: 6) {
-                HStack(spacing: windowState.isCompactWidth ? 10 : 16) {
-                    // Left anchor to balance Previous / Play / Next in the exact middle
-                    HStack(spacing: windowState.isCompactWidth ? 8 : 12) {
-                        if audioEngine.isWaveMode {
-                            Button {
-                                audioEngine.applyWaveTuning(.lessLikeThis)
-                            } label: {
-                                Image(systemName: "hand.thumbsdown")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(audioEngine.currentTrack == nil)
-                            .help("Меньше таких треков — пропустить и скорректировать волну")
+            centerControlsSection
+                .frame(minWidth: windowState.isMiniWidth ? 180 : 260, maxWidth: 440)
 
-                            Button {
-                                audioEngine.applyWaveTuning(.moreLikeThis)
-                                isFlameActive = true
-                                Task {
-                                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                                    await MainActor.run {
-                                        isFlameActive = false
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: isFlameActive ? "flame.fill" : "flame")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(isFlameActive ? .orange : .secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(audioEngine.currentTrack == nil)
-                            .help("Больше похожих треков — усилить этот стиль в волне без добавления в Избранное")
-                        } else {
-                            Button {
-                                audioEngine.toggleShuffle()
-                            } label: {
-                                Image(systemName: "shuffle")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(audioEngine.isShuffleEnabled ? Color.accentColor : .secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(audioEngine.currentTrack == nil && audioEngine.queue.isEmpty)
-                            .help(audioEngine.isShuffleEnabled ? "Выключить перемешивание" : "Перемешать очередь")
-                        }
-                    }
-                    .frame(width: windowState.isCompactWidth ? nil : 44, alignment: .trailing)
-
-                    Button {
-                        audioEngine.previous()
-                    } label: {
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 14))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(audioEngine.currentTrack == nil)
-
-                    Button {
-                        audioEngine.togglePlayPause()
-                    } label: {
-                        Image(systemName: audioEngine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 32))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(audioEngine.currentTrack == nil)
-
-                    Button {
-                        audioEngine.next()
-                    } label: {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 14))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(audioEngine.currentTrack == nil)
-
-                    // Right symmetrical balance spacer
-                    if !windowState.isCompactWidth {
-                        Color.clear
-                            .frame(width: 44, height: 1)
-                    }
-                }
-
-                // Isolated Scrubber View
-                IsolatedProgressSlider(
-                    progressTracker: audioEngine.progressTracker,
-                    onSeekCommit: { seconds in
-                        audioEngine.seek(to: seconds)
-                    }
-                )
+            // Right: Lyrics, Quality Badge & Volume Control
+            rightControlsSection
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, windowState.isCompactWidth ? 14 : 22)
+        .padding(.vertical, 10)
+        .frame(height: 72)
+        .frame(maxWidth: .infinity)
+        .background {
+            ZStack {
+                YMTheme.playerBg.opacity(0.85)
+                VisualEffectBlur(material: .headerView, blendingMode: .withinWindow)
             }
-            .frame(minWidth: windowState.isMiniWidth ? 160 : 220, maxWidth: 400)
+        }
+        .overlay(alignment: .top) {
+            YMTheme.border
+                .frame(height: 1)
+        }
+        .sheet(isPresented: $coordinator.isLyricsPresented) {
+            LyricsSheetView(track: audioEngine.currentTrack)
+        }
+    }
 
-            // Right: Lyrics, Quality Picker & Volume Slider
-            HStack(spacing: windowState.isCompactWidth ? 8 : 12) {
+    // MARK: - Left Track Section
+
+    @ViewBuilder
+    private var leftTrackSection: some View {
+        HStack(spacing: 12) {
+            let coverSize: CGFloat = windowState.isMiniWidth ? 38 : 46
+            if let track = audioEngine.currentTrack {
                 Button {
-                    coordinator.isLyricsPresented = true
+                    if let album = track.albums.first {
+                        coordinator.navigate(to: .album(id: album.id, title: album.title))
+                    }
                 } label: {
-                    Image(systemName: "quote.bubble")
-                        .font(.system(size: 13))
-                        .foregroundStyle(coordinator.isLyricsPresented ? YMTheme.accent : .secondary)
+                    CachedCoverImage(
+                        coverUri: track.effectiveCoverUri,
+                        size: .small,
+                        displaySize: coverSize,
+                        cornerRadius: 6
+                    )
+                    .shadow(color: Color.black.opacity(0.35), radius: 4, x: 0, y: 2)
                 }
                 .buttonStyle(.plain)
-                .disabled(audioEngine.currentTrack == nil)
-                .help("Показать текст песни")
+                .help("Перейти к альбому")
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(track.displayTitle)
+                        .font(.system(size: windowState.isMiniWidth ? 12 : 13, weight: .semibold))
+                        .foregroundStyle(YMTheme.fg)
+                        .lineLimit(1)
+
+                    if let firstArtist = track.artists.first {
+                        Button {
+                            coordinator.navigate(to: .artist(id: firstArtist.id, name: firstArtist.name))
+                        } label: {
+                            Text(track.artistsString)
+                                .font(.system(size: 11))
+                                .foregroundStyle(YMTheme.fg60)
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Перейти к исполнителю")
+                    } else {
+                        Text(track.artistsString)
+                            .font(.system(size: 11))
+                            .foregroundStyle(YMTheme.fg60)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(minWidth: 70, maxWidth: windowState.isCompactWidth ? 140 : 240, alignment: .leading)
+                .layoutPriority(1)
+
+                // Heart / Like button
+                Button {
+                    Task {
+                        await likesService.toggleLike(track: track)
+                    }
+                } label: {
+                    Image(systemName: likesService.isLiked(trackId: track.id) ? "heart.fill" : "heart")
+                        .foregroundColor(likesService.isLiked(trackId: track.id) ? YMTheme.heartRed : YMTheme.fg40)
+                        .font(.system(size: windowState.isMiniWidth ? 14 : 16))
+                }
+                .buttonStyle(.plain)
+                .help(likesService.isLiked(trackId: track.id) ? "Удалить из Мне нравится" : "Добавить в Мне нравится")
 
                 if !windowState.isMiniWidth {
-                    AudioQualityMenu(audioEngine: audioEngine)
-                }
-
-                if windowState.isMiniWidth {
                     Button {
-                        showVolumePopover.toggle()
+                        audioEngine.startWave(forTrack: track)
                     } label: {
-                        Image(systemName: audioEngine.volume > 0.5 ? "speaker.wave.3.fill" : (audioEngine.volume > 0 ? "speaker.wave.1.fill" : "speaker.slash.fill"))
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
+                        Image(systemName: "waveform.badge.magnifyingglass")
+                            .font(.system(size: 14))
+                            .foregroundStyle(YMTheme.fg40)
                     }
                     .buttonStyle(.plain)
-                    .popover(isPresented: $showVolumePopover, arrowEdge: .top) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "speaker.fill")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            Slider(
-                                value: Binding(
-                                    get: { audioEngine.volume },
-                                    set: { audioEngine.volume = $0 }
-                                ),
-                                in: 0...1
-                            )
-                            .frame(width: 120)
-                            .controlSize(.small)
-                            Image(systemName: "speaker.wave.3.fill")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(10)
-                    }
-                    .help("Громкость: \(Int(audioEngine.volume * 100))%")
-                } else {
-                    HStack(spacing: 6) {
-                        Image(systemName: audioEngine.volume > 0.5 ? "speaker.wave.3.fill" : (audioEngine.volume > 0 ? "speaker.wave.1.fill" : "speaker.slash.fill"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                    .help("Запустить Мою волну по этому треку")
+                }
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: coverSize, height: coverSize)
 
-                        Slider(
-                            value: Binding(
-                                get: { audioEngine.volume },
-                                set: { audioEngine.volume = $0 }
-                            ),
-                            in: 0...1
-                        )
-                        .frame(width: windowState.isCompactWidth ? 56 : 80)
-                        .controlSize(.small)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .padding(.horizontal, windowState.isCompactWidth ? 12 : 20)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
-            .background {
-                ZStack {
-                    VisualEffectBlur(material: .popover, blendingMode: .withinWindow)
-                    Color(NSColor.controlBackgroundColor).opacity(0.25)
-                }
-            }
-            .overlay(alignment: .top) {
-                Color.primary.opacity(0.1)
-                    .frame(height: 0.5)
-            }
-            .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: -3)
-            .sheet(isPresented: $coordinator.isLyricsPresented) {
-                LyricsSheetView(track: audioEngine.currentTrack)
+                Text("Ничего не играет")
+                    .font(.system(size: 13))
+                    .foregroundStyle(YMTheme.fg40)
+                    .frame(minWidth: 70, maxWidth: 200, alignment: .leading)
             }
         }
     }
 
-/// Interactive quality and codec selection menu for the Player Bar.
+    // MARK: - Center Controls Section
+
+    @ViewBuilder
+    private var centerControlsSection: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: windowState.isCompactWidth ? 12 : 18) {
+                // Wave tuning or Shuffle
+                HStack(spacing: 8) {
+                    if audioEngine.isWaveMode {
+                        Button {
+                            audioEngine.applyWaveTuning(.lessLikeThis)
+                        } label: {
+                            Image(systemName: "hand.thumbsdown")
+                                .font(.system(size: 13))
+                                .foregroundStyle(YMTheme.fg60)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(audioEngine.currentTrack == nil)
+                        .help("Меньше таких треков — скорректировать волну")
+
+                        Button {
+                            audioEngine.applyWaveTuning(.moreLikeThis)
+                            isFlameActive = true
+                            Task {
+                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                await MainActor.run {
+                                    isFlameActive = false
+                                }
+                            }
+                        } label: {
+                            Image(systemName: isFlameActive ? "flame.fill" : "flame")
+                                .font(.system(size: 14))
+                                .foregroundColor(isFlameActive ? .orange : YMTheme.fg60)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(audioEngine.currentTrack == nil)
+                        .help("Больше таких треков — усилить настроение в волне")
+                    } else {
+                        Button {
+                            audioEngine.toggleShuffle()
+                        } label: {
+                            Image(systemName: "shuffle")
+                                .font(.system(size: 13))
+                                .foregroundStyle(audioEngine.isShuffleEnabled ? YMTheme.accent : YMTheme.fg60)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(audioEngine.currentTrack == nil && audioEngine.queue.isEmpty)
+                        .help(audioEngine.isShuffleEnabled ? "Выключить перемешивание" : "Перемешать очередь")
+                    }
+                }
+                .frame(width: 44, alignment: .trailing)
+
+                // Previous Track
+                Button {
+                    audioEngine.previous()
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(audioEngine.currentTrack == nil ? YMTheme.fg40 : YMTheme.fg)
+                }
+                .buttonStyle(.plain)
+                .disabled(audioEngine.currentTrack == nil)
+                .help("Предыдущий трек")
+
+                // Play / Pause prominent Button (Signature Yellow Disc)
+                Button {
+                    audioEngine.togglePlayPause()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(YMTheme.accent)
+                            .frame(width: 36, height: 36)
+                            .shadow(color: YMTheme.accent.opacity(audioEngine.isPlaying ? 0.35 : 0.15), radius: 6, y: 1)
+
+                        Image(systemName: audioEngine.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(Color.black)
+                            .offset(x: audioEngine.isPlaying ? 0 : 1)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(audioEngine.currentTrack == nil)
+                .help(audioEngine.isPlaying ? "Пауза (Пробел)" : "Воспроизведение (Пробел)")
+
+                // Next Track
+                Button {
+                    audioEngine.next()
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(audioEngine.currentTrack == nil ? YMTheme.fg40 : YMTheme.fg)
+                }
+                .buttonStyle(.plain)
+                .disabled(audioEngine.currentTrack == nil)
+                .help("Следующий трек")
+
+                // Symmetric right spacer
+                Color.clear
+                    .frame(width: 44, height: 1)
+            }
+
+            // Isolated Scrubber View
+            IsolatedProgressSlider(
+                progressTracker: audioEngine.progressTracker,
+                onSeekCommit: { seconds in
+                    audioEngine.seek(to: seconds)
+                }
+            )
+        }
+    }
+
+    // MARK: - Right Controls Section
+
+    @ViewBuilder
+    private var rightControlsSection: some View {
+        HStack(spacing: windowState.isCompactWidth ? 10 : 14) {
+            // Lyrics Button
+            Button {
+                coordinator.isLyricsPresented = true
+            } label: {
+                Image(systemName: "quote.bubble")
+                    .font(.system(size: 14))
+                    .foregroundStyle(coordinator.isLyricsPresented ? YMTheme.accent : YMTheme.fg60)
+            }
+            .buttonStyle(.plain)
+            .disabled(audioEngine.currentTrack == nil)
+            .help("Показать текст песни")
+
+            // Quality Badge Menu
+            if !windowState.isMiniWidth {
+                AudioQualityMenu(audioEngine: audioEngine)
+            }
+
+            // Volume Control
+            HStack(spacing: 8) {
+                Button {
+                    toggleMute()
+                } label: {
+                    Image(systemName: volumeIcon)
+                        .font(.system(size: 13))
+                        .foregroundStyle(YMTheme.fg60)
+                        .frame(width: 18)
+                }
+                .buttonStyle(.plain)
+                .help(isMuted ? "Включить звук" : "Выключить звук")
+
+                YMSlider(
+                    value: Binding(
+                        get: { Double(audioEngine.volume) },
+                        set: {
+                            audioEngine.volume = Float($0)
+                            if $0 > 0 { isMuted = false }
+                        }
+                    ),
+                    in: 0...1,
+                    activeColor: YMTheme.fg,
+                    trackColor: Color.white.opacity(0.12),
+                    height: 3
+                )
+                .frame(width: windowState.isCompactWidth ? 64 : 86)
+            }
+        }
+    }
+
+    private var volumeIcon: String {
+        if isMuted || audioEngine.volume == 0 {
+            return "speaker.slash.fill"
+        } else if audioEngine.volume < 0.33 {
+            return "speaker.wave.1.fill"
+        } else if audioEngine.volume < 0.66 {
+            return "speaker.wave.2.fill"
+        } else {
+            return "speaker.wave.3.fill"
+        }
+    }
+
+    private func toggleMute() {
+        if isMuted {
+            audioEngine.volume = previousVolume > 0 ? previousVolume : 0.5
+            isMuted = false
+        } else {
+            previousVolume = audioEngine.volume
+            audioEngine.volume = 0
+            isMuted = true
+        }
+    }
+}
+
+// MARK: - Audio Quality Dropdown Menu
+
 private struct AudioQualityMenu: View {
     @Bindable var audioEngine: AudioPlayerEngine
     @Bindable var qualitySettings = AudioQualitySettings.shared
@@ -338,14 +388,17 @@ private struct AudioQualityMenu: View {
                 Image(systemName: "waveform")
                     .font(.system(size: 9))
                 Text(badgeTitle)
-                    .font(.system(size: 10, weight: .semibold))
-                    .frame(minWidth: 54, alignment: .center)
+                    .font(.system(size: 10, weight: .bold))
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(badgeBackground)
             .foregroundColor(badgeForeground)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(isLosslessActive ? YMTheme.accent.opacity(0.3) : YMTheme.border, lineWidth: 1)
+            )
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -368,18 +421,20 @@ private struct AudioQualityMenu: View {
 
     private var badgeBackground: Color {
         if isLosslessActive {
-            return Color.orange.opacity(0.18)
+            return YMTheme.accent.opacity(0.18)
         }
-        return Color.secondary.opacity(0.12)
+        return Color.white.opacity(0.08)
     }
 
     private var badgeForeground: Color {
         if isLosslessActive {
-            return Color.orange
+            return YMTheme.accent
         }
-        return Color.secondary
+        return YMTheme.fg80
     }
 }
+
+// MARK: - Isolated Progress Slider
 
 /// Isolated Slider component bound only to `PlaybackProgressTracker`.
 /// High-frequency ticks (up to 4-10 times/sec) do not re-render the parent PlayerBar or Navigation split view.
@@ -390,16 +445,19 @@ private struct IsolatedProgressSlider: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(progressTracker.currentTimeFormatted)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .trailing)
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(YMTheme.fg60)
+                .frame(width: 38, alignment: .trailing)
 
-            Slider(
+            YMSlider(
                 value: Binding(
                     get: { progressTracker.progress },
                     set: { progressTracker.progress = $0 }
                 ),
                 in: 0...1,
+                activeColor: YMTheme.accent,
+                trackColor: Color.white.opacity(0.14),
+                height: 3,
                 onEditingChanged: { editing in
                     progressTracker.isUserSeeking = editing
                     if !editing {
@@ -407,12 +465,11 @@ private struct IsolatedProgressSlider: View {
                     }
                 }
             )
-            .controlSize(.small)
 
             Text(progressTracker.durationFormatted)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .leading)
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(YMTheme.fg40)
+                .frame(width: 38, alignment: .leading)
         }
     }
 }
