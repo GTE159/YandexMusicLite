@@ -59,47 +59,45 @@ public struct MainSplitView: View {
             Color.clear
                 .frame(height: 52)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Section 1: Медиатека
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Медиатека")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(YMTheme.fg40)
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 4)
+            VStack(alignment: .leading, spacing: 18) {
+                // Section 1: Медиатека
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Медиатека")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(YMTheme.fg40)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 4)
 
-                        sidebarButton(section: .myWave)
+                    sidebarButton(section: .myWave)
 
-                        sidebarButton(
-                            section: .chart,
-                            badge: "ТОП-100",
-                            badgeColor: YMTheme.accent
-                        )
+                    sidebarButton(
+                        section: .chart,
+                        badge: "ТОП-100",
+                        badgeColor: YMTheme.accent
+                    )
 
-                        sidebarButton(
-                            section: .favorites,
-                            badge: likesService.likedTrackIds.isEmpty ? nil : formatLikedCount(likesService.likedTrackIds.count),
-                            badgeColor: YMTheme.fg60
-                        )
+                    sidebarButton(
+                        section: .favorites,
+                        badge: likesService.likedTrackIds.isEmpty ? nil : formatLikedCount(likesService.likedTrackIds.count),
+                        badgeColor: YMTheme.fg60
+                    )
 
-                        sidebarButton(section: .playlists)
-                    }
-
-                    // Section 2: Обзор и настройки
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Обзор и настройки")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(YMTheme.fg40)
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 4)
-
-                        sidebarButton(section: .search)
-                        sidebarButton(section: .settings)
-                    }
+                    sidebarButton(section: .playlists)
                 }
-                .padding(.horizontal, 10)
+
+                // Section 2: Обзор и настройки
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Обзор и настройки")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(YMTheme.fg40)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 4)
+
+                    sidebarButton(section: .search)
+                    sidebarButton(section: .settings)
+                }
             }
+            .padding(.horizontal, 10)
 
             Spacer()
 

@@ -93,22 +93,23 @@ public struct YMArtistCard: View {
         Button {
             onSelect?()
         } label: {
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 CachedCoverImage(
                     coverUri: artist.coverUri,
                     size: .medium,
-                    displaySize: 110,
-                    cornerRadius: 55
+                    displaySize: 104,
+                    cornerRadius: 52
                 )
-                .frame(width: 110, height: 110)
+                .frame(width: 104, height: 104)
                 .clipShape(Circle())
                 .overlay(
                     Circle()
-                        .strokeBorder(isHovered ? YMTheme.accent : YMTheme.border, lineWidth: isHovered ? 2 : 1)
+                        .strokeBorder(isHovered ? YMTheme.accent : YMTheme.border, lineWidth: isHovered ? 2.5 : 1)
                 )
                 .scaleEffect(isHovered ? 1.05 : 1.0)
-                .shadow(color: .black.opacity(isHovered ? 0.35 : 0.1), radius: 10, y: 4)
-                .animation(.spring(response: 0.28, dampingFraction: 0.7), value: isHovered)
+                .shadow(color: isHovered ? YMTheme.accent.opacity(0.3) : Color.black.opacity(0.15), radius: isHovered ? 12 : 6, y: 3)
+                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isHovered)
+                .padding(.vertical, 8)
 
                 VStack(spacing: 2) {
                     Text(artist.name)
@@ -120,8 +121,9 @@ public struct YMArtistCard: View {
                         .font(.caption2)
                         .foregroundStyle(YMTheme.fg40)
                 }
-                .frame(width: 110)
+                .frame(width: 114)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
