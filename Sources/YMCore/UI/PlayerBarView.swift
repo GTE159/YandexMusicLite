@@ -6,6 +6,7 @@ public struct PlayerBarView: View {
     @UIState private var audioEngine = AudioPlayerEngine.shared
     @UIState private var likesService = LikesService.shared
     @UIState private var windowState = WindowState.shared
+    @UIState private var coordinator = NavigationCoordinator.shared
     @UIState private var isFlameActive = false
     @UIState private var showVolumePopover = false
 
@@ -17,22 +18,43 @@ public struct PlayerBarView: View {
             HStack(spacing: windowState.isMiniWidth ? 8 : 12) {
                 let coverSize: CGFloat = windowState.isMiniWidth ? 36 : 44
                 if let track = audioEngine.currentTrack {
-                    CachedCoverImage(
-                        coverUri: track.effectiveCoverUri,
-                        size: .small,
-                        displaySize: coverSize,
-                        cornerRadius: 6
-                    )
+                    Button {
+                        if let album = track.albums.first {
+                            coordinator.navigate(to: .album(id: album.id, title: album.title))
+                        }
+                    } label: {
+                        CachedCoverImage(
+                            coverUri: track.effectiveCoverUri,
+                            size: .small,
+                            displaySize: coverSize,
+                            cornerRadius: 6
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Перейти к альбому")
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(track.displayTitle)
                             .font(.system(size: windowState.isMiniWidth ? 12 : 13, weight: .medium))
                             .lineLimit(1)
 
-                        Text(track.artistsString)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        if let firstArtist = track.artists.first {
+                            Button {
+                                coordinator.navigate(to: .artist(id: firstArtist.id, name: firstArtist.name))
+                            } label: {
+                                Text(track.artistsString)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Перейти к исполнителю")
+                        } else {
+                            Text(track.artistsString)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                     .frame(minWidth: 60, maxWidth: windowState.isCompactWidth ? 120 : 180, alignment: .leading)
                     .layoutPriority(1)
@@ -165,8 +187,19 @@ public struct PlayerBarView: View {
             }
             .frame(minWidth: windowState.isMiniWidth ? 160 : 220, maxWidth: 400)
 
-            // Right: Quality Picker & Volume Slider
+            // Right: Lyrics, Quality Picker & Volume Slider
             HStack(spacing: windowState.isCompactWidth ? 8 : 12) {
+                Button {
+                    coordinator.isLyricsPresented = true
+                } label: {
+                    Image(systemName: "quote.bubble")
+                        .font(.system(size: 13))
+                        .foregroundStyle(coordinator.isLyricsPresented ? YMTheme.accent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(audioEngine.currentTrack == nil)
+                .help("Показать текст песни")
+
                 if !windowState.isMiniWidth {
                     AudioQualityMenu(audioEngine: audioEngine)
                 }
@@ -235,6 +268,9 @@ public struct PlayerBarView: View {
                     .frame(height: 0.5)
             }
             .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: -3)
+            .sheet(isPresented: $coordinator.isLyricsPresented) {
+                LyricsSheetView(track: audioEngine.currentTrack)
+            }
         }
     }
 

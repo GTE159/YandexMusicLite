@@ -1020,3 +1020,180 @@ func testAudioPlayerEngineWaveTuningLessLikeThis() async throws {
     #expect(!collector.contains("101"))
 }
 
+@Test("YMArtistBriefInfo and YMArtistStats decoding")
+func testArtistBriefInfoDecoding() throws {
+    let json = """
+    {
+        "artist": {
+            "id": 12345,
+            "name": "Linkin Park",
+            "cover": { "uri": "avatars.yandex.net/get-music-content/123/%%" }
+        },
+        "albums": [
+            { "id": "111", "title": "Meteora", "year": 2003, "genre": "rock" }
+        ],
+        "alsoAlbums": [
+            { "id": "222", "title": "Numb EP", "year": 2003 }
+        ],
+        "popularTracks": [
+            { "id": "999", "title": "Numb", "durationMs": 185000 }
+        ],
+        "similarArtists": [
+            { "id": 54321, "name": "Evanescence" }
+        ],
+        "stats": {
+            "lastMonthListeners": 3500000,
+            "lastMonthListenersDelta": 15000
+        },
+        "description": {
+            "text": "American rock band formed in Agoura Hills, California."
+        }
+    }
+    """
+    let data = try #require(json.data(using: .utf8))
+    let info = try JSONDecoder().decode(YMArtistBriefInfo.self, from: data)
+
+    #expect(info.artist.id == "12345")
+    #expect(info.artist.name == "Linkin Park")
+    #expect(info.albums.count == 1)
+    #expect(info.albums.first?.title == "Meteora")
+    #expect(info.alsoAlbums.count == 1)
+    #expect(info.popularTracks.count == 1)
+    #expect(info.popularTracks.first?.title == "Numb")
+    #expect(info.similarArtists.count == 1)
+    #expect(info.similarArtists.first?.name == "Evanescence")
+    #expect(info.stats?.lastMonthListeners == 3500000)
+    #expect(info.stats?.formattedListeners.contains("3 500 000") == true)
+    #expect(info.description?.text?.contains("American rock band") == true)
+}
+
+@Test("YMAlbumWithTracks decoding and volume flattening")
+func testAlbumWithTracksDecoding() throws {
+    let json = """
+    {
+        "id": 55555,
+        "title": "Hybrid Theory",
+        "year": 2000,
+        "genre": "rock",
+        "trackCount": 2,
+        "artists": [
+            { "id": "12345", "name": "Linkin Park" }
+        ],
+        "volumes": [
+            [
+                { "id": "1", "title": "Papercut", "durationMs": 184000 },
+                { "id": "2", "title": "One Step Closer", "durationMs": 155000 }
+            ]
+        ]
+    }
+    """
+    let data = try #require(json.data(using: .utf8))
+    let album = try JSONDecoder().decode(YMAlbumWithTracks.self, from: data)
+
+    #expect(album.id == "55555")
+    #expect(album.title == "Hybrid Theory")
+    #expect(album.year == 2000)
+    #expect(album.genre == "rock")
+    #expect(album.artists.count == 1)
+    #expect(album.artists.first?.name == "Linkin Park")
+    #expect(album.volumes.count == 1)
+    #expect(album.allTracks.count == 2)
+    #expect(album.allTracks[0].title == "Papercut")
+    #expect(album.allTracks[1].title == "One Step Closer")
+    #expect(album.formattedInfo.contains("2000") == true)
+    #expect(album.formattedInfo.contains("Rock") == true)
+}
+
+@Test("YMChartResponse decoding")
+func testChartResponseDecoding() throws {
+    let json = """
+    {
+        "chart": {
+            "id": "world",
+            "title": "Чарт",
+            "tracks": [
+                {
+                    "id": "1001",
+                    "track": {
+                        "id": "777",
+                        "title": "Top Song",
+                        "durationMs": 200000
+                    },
+                    "chart": {
+                        "position": 1,
+                        "progress": "up",
+                        "shift": 2,
+                        "listeners": 500000
+                    }
+                }
+            ]
+        }
+    }
+    """
+    let data = try #require(json.data(using: .utf8))
+    let chartResponse = try JSONDecoder().decode(YMChartResponse.self, from: data)
+
+    #expect(chartResponse.chart?.tracks.count == 1)
+    let item = try #require(chartResponse.chart?.tracks.first)
+    #expect(item.track?.title == "Top Song")
+    #expect(item.chart?.position == 1)
+    #expect(item.chart?.progress == "up")
+    #expect(item.chart?.progressSymbol == "▲")
+}
+
+@Test("YMTrackSupplement and lyrics decoding")
+func testTrackSupplementDecoding() throws {
+    let json = """
+    {
+        "id": "777",
+        "lyrics": {
+            "id": 888,
+            "lyrics": "First line of song",
+            "fullLyrics": "First line of song\\nSecond line of song",
+            "hasRights": true,
+            "textLanguage": "ru"
+        }
+    }
+    """
+    let data = try #require(json.data(using: .utf8))
+    let supplement = try JSONDecoder().decode(YMTrackSupplement.self, from: data)
+
+    #expect(supplement.id == "777")
+    #expect(supplement.lyrics?.id == 888)
+    #expect(supplement.lyrics?.fullLyrics?.contains("Second line") == true)
+    #expect(supplement.lyrics?.displayText.contains("Second line") == true)
+}
+
+@Test("NavigationCoordinator routing and history stack")
+func testNavigationCoordinatorRouting() {
+    let coordinator = NavigationCoordinator()
+    #expect(!coordinator.canGoBack)
+    #expect(coordinator.path.isEmpty)
+
+    coordinator.navigate(to: .artist(id: "123", name: "Artist One"))
+    #expect(coordinator.canGoBack)
+    #expect(coordinator.path.count == 1)
+
+    coordinator.navigate(to: .album(id: "456", title: "Album One"))
+    #expect(coordinator.path.count == 2)
+
+    coordinator.pop()
+    #expect(coordinator.path.count == 1)
+    #expect(coordinator.path.first == .artist(id: "123", name: "Artist One"))
+
+    coordinator.popToRoot()
+    #expect(coordinator.path.isEmpty)
+    #expect(!coordinator.canGoBack)
+}
+
+@Test("Wave context for artist")
+func testWaveContextForArtist() {
+    let artist = YMArtist(id: "999", name: "Queen")
+    let context = YMWaveContext.forArtist(artist)
+
+    #expect(context.title.contains("Queen"))
+    #expect(context.seeds == ["artist:999"])
+    #expect(context.fallbackStationId == "artist:999")
+}
+
+

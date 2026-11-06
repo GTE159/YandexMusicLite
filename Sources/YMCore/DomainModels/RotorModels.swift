@@ -228,4 +228,13 @@ public struct YMWaveContext: Equatable, Sendable {
             fallbackStationId: "user:onyourwave"
         )
     }
+
+    public static func forArtist(_ artist: YMArtist) -> YMWaveContext {
+        YMWaveContext(
+            title: "Волна по артисту: \(artist.name)",
+            subtitle: "Лучшие треки \(artist.name) и похожая музыка",
+            seeds: ["artist:\(artist.id)"],
+            fallbackStationId: "artist:\(artist.id)"
+        )
+    }
 }

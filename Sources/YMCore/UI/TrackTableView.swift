@@ -11,6 +11,7 @@ public struct TrackTableView: View {
     @UIState private var selectedTrackId: YMTrack.ID?
     @UIState private var likesService = LikesService.shared
     @UIState private var audioEngine = AudioPlayerEngine.shared
+    @UIState private var coordinator = NavigationCoordinator.shared
 
     public init(
         tracks: [YMTrack],
@@ -131,6 +132,16 @@ public struct TrackTableView: View {
                         .fill(Color.secondary.opacity(0.08))
                         .frame(width: 100, height: 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                } else if let firstArtist = track.artists.first {
+                    Button {
+                        coordinator.navigate(to: .artist(id: firstArtist.id, name: firstArtist.name))
+                    } label: {
+                        Text(track.artistsString)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
                 } else {
                     Text(track.artistsString)
                         .font(.system(size: 12))
@@ -149,8 +160,18 @@ public struct TrackTableView: View {
                         .fill(Color.secondary.opacity(0.08))
                         .frame(width: 80, height: 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                } else if let firstAlbum = track.albums.first {
+                    Button {
+                        coordinator.navigate(to: .album(id: firstAlbum.id, title: firstAlbum.title))
+                    } label: {
+                        Text(firstAlbum.title)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
                 } else {
-                    Text(track.albums.first?.title ?? "-")
+                    Text("-")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -190,6 +211,31 @@ public struct TrackTableView: View {
                     audioEngine.startWave(forTrack: track)
                 } label: {
                     Label("Запустить Мою волну по треку", systemImage: "waveform.badge.magnifyingglass")
+                }
+
+                Divider()
+
+                if let firstArtist = track.artists.first {
+                    Button {
+                        coordinator.navigate(to: .artist(id: firstArtist.id, name: firstArtist.name))
+                    } label: {
+                        Label("Перейти к исполнителю (\(firstArtist.name))", systemImage: "person.circle")
+                    }
+                }
+
+                if let firstAlbum = track.albums.first {
+                    Button {
+                        coordinator.navigate(to: .album(id: firstAlbum.id, title: firstAlbum.title))
+                    } label: {
+                        Label("Перейти к альбому (\(firstAlbum.title))", systemImage: "opticaldisc")
+                    }
+                }
+
+                Button {
+                    audioEngine.assignQueue([track], startingAt: 0)
+                    coordinator.isLyricsPresented = true
+                } label: {
+                    Label("Показать текст песни", systemImage: "quote.bubble")
                 }
 
                 if audioEngine.isWaveMode {

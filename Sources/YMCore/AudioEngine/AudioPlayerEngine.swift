@@ -92,6 +92,10 @@ public final class AudioPlayerEngine {
         }
     }
 
+    public func assignQueue(_ newQueue: [YMTrack], startingAt index: Int = 0) {
+        setQueue(newQueue, startingAt: index)
+    }
+
     public func appendToQueue(_ tracks: [YMTrack]) {
         self.queue.append(contentsOf: tracks)
         if isWaveMode && currentIndex > 40 {
@@ -293,6 +297,11 @@ public final class AudioPlayerEngine {
     public func startWave(forPlaylist playlist: YMPlaylist, tracks: [YMTrack]) {
         let sampleIds = tracks.filter { !$0.isPlaceholder && !$0.isSpacer }.shuffled().prefix(5).map(\.id)
         let context = YMWaveContext.forPlaylist(playlist, sampleTrackIds: Array(sampleIds))
+        onStartCustomWaveRequested?(context, nil)
+    }
+
+    public func startWave(forArtist artist: YMArtist) {
+        let context = YMWaveContext.forArtist(artist)
         onStartCustomWaveRequested?(context, nil)
     }
 

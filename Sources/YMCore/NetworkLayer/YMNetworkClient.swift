@@ -623,6 +623,39 @@ public actor YMNetworkClient {
         return response.tracks
     }
 
+    /// GET /artists/{artistId}/brief-info
+    public func fetchArtistBriefInfo(artistId: String) async throws -> YMArtistBriefInfo {
+        try await request(endpoint: "/artists/\(artistId)/brief-info")
+    }
+
+    /// GET /albums/{albumId}/with-tracks
+    public func fetchAlbumWithTracks(albumId: String) async throws -> YMAlbumWithTracks {
+        try await request(endpoint: "/albums/\(albumId)/with-tracks")
+    }
+
+    /// GET /landing3/chart
+    public func fetchChart() async throws -> [YMChartItem] {
+        let response: YMChartResponse = try await request(endpoint: "/landing3/chart")
+        return response.chart?.tracks ?? []
+    }
+
+    /// GET /tracks/{trackId}/supplement
+    public func fetchTrackSupplement(trackId: String) async throws -> YMTrackSupplement {
+        try await request(endpoint: "/tracks/\(trackId)/supplement")
+    }
+
+    /// GET /tracks/{trackId}/similar
+    public func fetchSimilarTracks(trackId: String) async throws -> [YMTrack] {
+        struct SimilarResponse: Codable, Sendable {
+            let similarTracks: [YMTrack]
+            enum CodingKeys: String, CodingKey {
+                case similarTracks
+            }
+        }
+        let response: SimilarResponse = try await request(endpoint: "/tracks/\(trackId)/similar")
+        return response.similarTracks
+    }
+
     /// Global search with intelligent artist resolution and track discovery:
     /// GET /search?text={query}&type=all&page={page}&nocorrect=false
     public func searchTracks(query: String, page: Int = 0) async throws -> [YMTrack] {

@@ -2,6 +2,7 @@ import SwiftUI
 
 public enum SidebarSection: String, CaseIterable, Identifiable {
     case myWave = "Моя волна"
+    case chart = "Чарт"
     case favorites = "Мне нравится"
     case playlists = "Плейлисты"
     case search = "Поиск"
@@ -12,6 +13,7 @@ public enum SidebarSection: String, CaseIterable, Identifiable {
     public var iconName: String {
         switch self {
         case .myWave: return "waveform.path.ecg"
+        case .chart: return "chart.line.uptrend.xyaxis"
         case .favorites: return "heart.fill"
         case .playlists: return "music.note.list"
         case .search: return "magnifyingglass"
@@ -24,6 +26,7 @@ public enum SidebarSection: String, CaseIterable, Identifiable {
 /// and the isolated Player Bar pinned to the bottom.
 public struct MainSplitView: View {
     @UIState private var selectedSection: SidebarSection? = .myWave
+    @UIState private var coordinator = NavigationCoordinator.shared
     @UIState private var authService = AuthService.shared
     @UIState private var audioEngine = AudioPlayerEngine.shared
     @UIState private var rotorService = RotorService.shared
@@ -46,11 +49,14 @@ public struct MainSplitView: View {
                             Text(section.rawValue)
                         } icon: {
                             Image(systemName: section.iconName)
-                                .foregroundColor(section == .favorites ? .red : .primary)
+                                .foregroundColor(section == .favorites ? .red : (section == .chart ? .orange : .primary))
                         }
                     }
                 }
                 .listStyle(.sidebar)
+                .onChange(of: selectedSection) {
+                    coordinator.popToRoot()
+                }
 
                 Spacer()
 
@@ -93,24 +99,36 @@ public struct MainSplitView: View {
             .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 260)
         } detail: {
             VStack(spacing: 0) {
-                Group {
-                    switch selectedSection {
-                    case .myWave:
-                        MyWaveView()
-                    case .favorites:
-                        FavoritesListView()
-                    case .playlists:
-                        PlaylistsView()
-                    case .search:
-                        SearchView()
-                    case .settings:
-                        SettingsView()
-                    case .none:
-                        Text("Выберите раздел")
-                            .foregroundStyle(.secondary)
+                NavigationStack(path: $coordinator.path) {
+                    Group {
+                        switch selectedSection {
+                        case .myWave:
+                            MyWaveView()
+                        case .chart:
+                            ChartView()
+                        case .favorites:
+                            FavoritesListView()
+                        case .playlists:
+                            PlaylistsView()
+                        case .search:
+                            SearchView()
+                        case .settings:
+                            SettingsView()
+                        case .none:
+                            Text("Выберите раздел")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .navigationDestination(for: AppRoute.self) { route in
+                        switch route {
+                        case .artist(let id, let name):
+                            ArtistDetailView(artistId: id, artistName: name)
+                        case .album(let id, let title):
+                            AlbumDetailView(albumId: id, albumTitle: title)
+                        }
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 PlayerBarView()
             }
